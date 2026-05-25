@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Code, TrendingDown, Zap } from 'lucide-react'
-
+import Link from 'next/link'
 export function HeroSection() {
   const floatingCards = [
     { label: 'Execution Cost Reduced', value: '72%', delay: 0 },
@@ -106,7 +106,7 @@ export function HeroSection() {
                 size="lg"
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                Try Optimizer
+                <Link href="/optimizer">Try Optimizer</Link>
               </Button>
               <Button
                 size="lg"

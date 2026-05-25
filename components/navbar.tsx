@@ -21,7 +21,8 @@ export function Navbar() {
             transition={{ type: 'spring', stiffness: 400, damping: 10 }}
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <span className="text-lg font-bold text-primary-foreground">A</span>
+              <Link href="/"><span className="text-lg font-bold text-primary-foreground">A</span>
+</Link>
             </div>
             <span className="hidden text-xl font-bold text-foreground sm:inline">Arbiter</span>
           </motion.div>
