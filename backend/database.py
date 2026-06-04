@@ -1,69 +1,95 @@
 import os
 import sqlite3
+import pymongo
+from bson import ObjectId
+import datetime
+from typing import Optional
 
-# Define the absolute path to the default SQLite database file
+# MongoDB Connection Configuration
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+client = pymongo.MongoClient(MONGO_URI)
+mongo_db = client["arbiter_db"]
+
+# Default SQLite target database file for query optimizations (E-Commerce Demo)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'optimizer.db')
-# Define the absolute path to the logs SQLite database file
-LOGS_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs.db')
 
-# Module-level variable to store the path of the currently active query database
-ACTIVE_DB_PATH = DB_PATH
+def get_user_db_path(user_id: Optional[str] = None) -> str:
+    """
+    Fetches the SQLite database path associated with the given user_id from MongoDB.
+    Defaults to the preloaded e-commerce demo database path if none is found.
+    """
+    if not user_id:
+        return DB_PATH
+    
+    try:
+        record = mongo_db["user_databases"].find_one({"user_id": user_id})
+        if record and os.path.exists(record["db_path"]):
+            return record["db_path"]
+    except Exception as e:
+        print("Error fetching user database path from MongoDB:", e)
+    return DB_PATH
 
-def get_db_connection():
+def get_db_connection(user_id: Optional[str] = None):
     """
-    Creates and returns a connection to the currently active SQLite query database.
-    Sets the isolation_level to None to enable autocommit mode,
-    which allows transactional CREATE INDEX and ROLLBACK for Plan B evaluation.
+    Creates and returns a connection to the SQLite database associated with the user.
+    If no user_id is provided, routes to the default demo database.
     """
-    conn = sqlite3.connect(ACTIVE_DB_PATH)
+    path = get_user_db_path(user_id)
+    conn = sqlite3.connect(path)
     # Use Row factory to access columns by name
     conn.row_factory = sqlite3.Row
     return conn
 
-def get_logs_connection():
+def log_query_execution(user_id: Optional[str], query: str, features: dict, predicted_cost: float, actual_cost: float):
     """
-    Creates and returns a connection to the persistent query logs database.
+    Saves execution results and featurized query plan in MongoDB query_logs collection.
     """
-    conn = sqlite3.connect(LOGS_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        log_entry = {
+            "user_id": user_id or "guest",
+            "query": query,
+            "features": features,
+            "predicted_cost": predicted_cost,
+            "actual_cost": actual_cost,
+            "timestamp": datetime.datetime.utcnow()
+        }
+        mongo_db["query_logs"].insert_one(log_entry)
+    except Exception as e:
+        print("Failed to write query log to MongoDB:", e)
 
-def set_active_database(path: str):
+def get_query_history_from_mongo(user_id: Optional[str], limit: int = 100):
     """
-    Sets the active query database path.
+    Reads query logs list associated with the user_id from MongoDB.
     """
-    global ACTIVE_DB_PATH
-    ACTIVE_DB_PATH = os.path.abspath(path)
-
-def reset_active_database():
-    """
-    Resets the active query database path to the default optimizer.db database.
-    """
-    global ACTIVE_DB_PATH
-    ACTIVE_DB_PATH = DB_PATH
+    uid = user_id or "guest"
+    try:
+        cursor = mongo_db["query_logs"].find({"user_id": uid}).sort("timestamp", -1).limit(limit)
+        history = []
+        for doc in cursor:
+            history.append({
+                "id": str(doc["_id"]),
+                "query": doc["query"],
+                "features": doc["features"],
+                "predicted_cost_ms": doc["predicted_cost"],
+                "actual_cost_ms": doc["actual_cost"],
+                "timestamp": doc["timestamp"].isoformat() if isinstance(doc["timestamp"], datetime.datetime) else str(doc["timestamp"])
+            })
+        return history
+    except Exception as e:
+        print("Error fetching query logs from MongoDB:", e)
+        return []
 
 def init_db():
     """
-    Initializes the SQLite database schema in the logs database.
-    Creates the query_logs table for tracking optimizer histories.
+    Initialize SQLite logs table fallback (unused, but kept for structural consistency
+    and preventing imports errors during bootstrap).
     """
-    conn = get_logs_connection()
-    cursor = conn.cursor()
-    
-    # Create the query_logs table if it does not exist
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS query_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        query TEXT NOT NULL,
-        features TEXT NOT NULL,          -- JSON string of extracted features
-        predicted_cost REAL NOT NULL,    -- Predicted latency in milliseconds
-        actual_cost REAL NOT NULL,       -- Actual measured latency in milliseconds
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
-    conn.close()
+    pass
 
 if __name__ == '__main__':
-    init_db()
-    print("Database initialized successfully at:", LOGS_DB_PATH)
-
+    # Test MongoDB Connection
+    try:
+        client.admin.command('ping')
+        print("Connected successfully to MongoDB database at:", MONGO_URI)
+    except Exception as e:
+        print("MongoDB connection failed:", e)

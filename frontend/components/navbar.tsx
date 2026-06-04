@@ -1,10 +1,35 @@
 'use client'
 
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 
 export function Navbar() {
+  const router = useRouter()
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userName, setUserName] = useState('')
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    const name = localStorage.getItem('userName')
+    if (token) {
+      setIsLoggedIn(true)
+      setUserName(name || '')
+    }
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('userEmail')
+    localStorage.removeItem('userName')
+    setIsLoggedIn(false)
+    setUserName('')
+    router.push('/')
+    // Force a full reload to reset all client page states
+    window.location.reload()
+  }
   return (
     <motion.nav
       className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md"
@@ -52,19 +77,36 @@ export function Navbar() {
 
           {/* Auth Buttons */}
           <div className="flex items-center gap-3">
-            <Link href="/login">
-              <Button
-                variant="ghost"
-                className="text-sm font-medium text-foreground/95 hover:text-white"
-              >
-                Login
-              </Button>
-            </Link>
-            <Link href="/signup">
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-                Get Started
-              </Button>
-            </Link>
+            {isLoggedIn ? (
+              <>
+                <span className="text-xs font-semibold text-foreground/75 bg-muted px-2.5 py-1.5 rounded-lg border border-border/40 font-mono">
+                  {userName || 'Active User'}
+                </span>
+                <Button
+                  onClick={handleLogout}
+                  variant="ghost"
+                  className="text-sm font-medium text-foreground/95 hover:text-white cursor-pointer"
+                >
+                  Logout
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link href="/login">
+                  <Button
+                    variant="ghost"
+                    className="text-sm font-medium text-foreground/95 hover:text-white cursor-pointer"
+                  >
+                    Login
+                  </Button>
+                </Link>
+                <Link href="/signup">
+                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
+                    Get Started
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </div>

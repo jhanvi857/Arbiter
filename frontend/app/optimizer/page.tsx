@@ -31,6 +31,7 @@ import {
   type DbStatusResponse 
 } from '@/lib/arbiter-api'
 import { Toaster, toast } from 'sonner'
+import Link from 'next/link'
 
 const TEMPLATES = [
   {
@@ -89,6 +90,7 @@ export default function OptimizerPage() {
   const [dbStatus, setDbStatus] = useState<DbStatusResponse | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({})
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadDbStatus = async () => {
@@ -102,6 +104,9 @@ export default function OptimizerPage() {
 
   useEffect(() => {
     loadDbStatus()
+    if (typeof window !== 'undefined') {
+      setIsLoggedIn(!!localStorage.getItem('token'))
+    }
   }, [])
 
   const toggleTable = (tableName: string) => {
@@ -248,34 +253,42 @@ export default function OptimizerPage() {
               )}
             </div>
 
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleDbUpload}
-              accept=".db,.sqlite,.sqlite3"
-              className="hidden"
-            />
+            {isLoggedIn ? (
+              <>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleDbUpload}
+                  accept=".db,.sqlite,.sqlite3"
+                  className="hidden"
+                />
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1 border-primary/20 bg-primary/5 text-xs font-semibold text-primary hover:bg-primary/10 hover:border-primary/40 cursor-pointer"
-              disabled={isUploading}
-            >
-              <Upload className="h-3 w-3" />
-              {isUploading ? 'Uploading...' : 'Upload DB'}
-            </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1 border-primary/20 bg-primary/5 text-xs font-semibold text-primary hover:bg-primary/10 hover:border-primary/40 cursor-pointer"
+                  disabled={isUploading}
+                >
+                  <Upload className="h-3 w-3" />
+                  {isUploading ? 'Uploading...' : 'Upload DB'}
+                </Button>
 
-            {dbStatus && !dbStatus.is_demo && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDbReset}
-                className="border-border bg-card text-xs text-foreground hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive cursor-pointer"
-              >
-                Reset to Demo
-              </Button>
+                {dbStatus && !dbStatus.is_demo && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDbReset}
+                    className="border-border bg-card text-xs text-foreground hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive cursor-pointer"
+                  >
+                    Reset to Demo
+                  </Button>
+                )}
+              </>
+            ) : (
+              <span className="text-[10px] font-bold text-foreground/45 uppercase tracking-wider px-2">
+                Log in to upload database
+              </span>
             )}
           </div>
         </div>
@@ -424,6 +437,18 @@ export default function OptimizerPage() {
                   </div>
                 )}
               </CardContent>
+              {!isLoggedIn && (
+                <div className="p-4 bg-primary/5 border-t border-border/30 text-center rounded-b-xl">
+                  <p className="text-xs text-foreground/75 mb-2.5 font-medium leading-relaxed">
+                    You are exploring Arbiter on the <strong>Demo Database</strong>. Log in to upload and optimize queries on your own SQLite database schemas.
+                  </p>
+                  <Link href="/login">
+                    <Button size="sm" className="w-full bg-primary text-[11px] font-bold text-primary-foreground hover:bg-primary/90 h-8 cursor-pointer shadow shadow-primary/5">
+                      Log In to Upload DB
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </Card>
           </div>
 

@@ -6,3 +6,6 @@ pandas
 joblib
 sqlparse
 python-multipart
+pymongo
+pyjwt
+

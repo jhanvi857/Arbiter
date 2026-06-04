@@ -3,6 +3,7 @@ import sqlparse
 from database import get_db_connection
 
 # Cache for table sizes to avoid querying the database repeatedly
+# Keyed by {db_file_path: {table_name: count}}
 _table_sizes_cache = {}
 
 def clear_table_size_cache():
@@ -13,22 +14,34 @@ def clear_table_size_cache():
 def get_table_size(conn, table_name: str) -> int:
     """
     Fetches the size (number of rows) of a table from SQLite.
-    Caches results to optimize performance during feature extraction.
+    Caches results per database path namespace to optimize performance.
     """
     global _table_sizes_cache
     
+    # Retrieve connection's database file path to separate caches
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA database_list;")
+        db_file = cursor.fetchone()[2]  # SQLite path is in the 3rd column of database_list
+    except Exception:
+        db_file = 'default'
+        
+    # Initialize cache for this database file if not present
+    if db_file not in _table_sizes_cache:
+        _table_sizes_cache[db_file] = {}
+        
     # Normalize table name (strip brackets/quotes if any)
     clean_name = table_name.replace('[', '').replace(']', '').replace('"', '').replace('`', '')
     
-    if clean_name in _table_sizes_cache:
-        return _table_sizes_cache[clean_name]
+    if clean_name in _table_sizes_cache[db_file]:
+        return _table_sizes_cache[db_file][clean_name]
     
     try:
         cursor = conn.cursor()
         cursor.execute(f"SELECT count(*) FROM [{clean_name}]")
         row = cursor.fetchone()
         count = row[0] if row else 0
-        _table_sizes_cache[clean_name] = count
+        _table_sizes_cache[db_file][clean_name] = count
         return count
     except Exception:
         # Fallback to a default size if the table does not exist or has errors

@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,8 +9,33 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardContent, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { signupUser } from '@/lib/arbiter-api'
 
 export default function SignupPage() {
+  const router = useRouter()
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    setIsSubmitting(true)
+
+    try {
+      const res = await signupUser({ name, email, password })
+      localStorage.setItem('token', res.token)
+      localStorage.setItem('userEmail', res.email)
+      localStorage.setItem('userName', res.name)
+      router.push('/optimizer')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
   return (
     <main className="relative min-h-screen flex items-center justify-center overflow-hidden bg-background px-4 py-12 sm:px-6 lg:px-8">
       {/* Back to Home Button */}
@@ -60,7 +87,7 @@ export default function SignupPage() {
           </CardHeader>
           <CardContent className="space-y-6 pt-4">
             {/* Form */}
-            <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+            <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-1.5">
                 <Label htmlFor="name" className="text-foreground font-medium">Full Name</Label>
                 <Input
@@ -68,6 +95,8 @@ export default function SignupPage() {
                   type="text"
                   placeholder="John Doe"
                   className="bg-background/50 border-border text-foreground placeholder:text-foreground/40 focus:bg-background transition-colors"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   required
                 />
               </div>
@@ -78,6 +107,8 @@ export default function SignupPage() {
                   type="email"
                   placeholder="name@company.com"
                   className="bg-background/50 border-border text-foreground placeholder:text-foreground/40 focus:bg-background transition-colors"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>
@@ -88,12 +119,24 @@ export default function SignupPage() {
                   type="password"
                   placeholder="Minimum 8 characters"
                   className="bg-background/50 border-border text-foreground placeholder:text-foreground/40 focus:bg-background transition-colors"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                 />
               </div>
 
-              <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 mt-2 py-6 text-base font-semibold transition-all shadow-md shadow-primary/10">
-                Create Account
+              {error && (
+                <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-500 text-center">
+                  {error}
+                </div>
+              )}
+
+              <Button 
+                type="submit" 
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 mt-2 py-6 text-base font-semibold transition-all shadow-md shadow-primary/10 cursor-pointer"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Creating Account...' : 'Create Account'}
               </Button>
             </form>
 
