@@ -1,11 +1,16 @@
+import os
 import time
 import json
-from fastapi import FastAPI, HTTPException
+import sqlite3
+import shutil
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from database import get_db_connection, init_db
+import database
+from database import get_db_connection, get_logs_connection, init_db
 from optimizer import optimize_query
 from model import get_model_metadata, retrain_on_logs
+from feature_extractor import clear_table_size_cache
 
 app = FastAPI(
     title="Arbiter DB Query Optimizer API",
@@ -105,7 +110,7 @@ def get_query_history():
     Returns query history logs stored in the query_logs table,
     comparing predicted costs vs actual latency.
     """
-    conn = get_db_connection()
+    conn = get_logs_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT id, query, features, predicted_cost, actual_cost, timestamp FROM query_logs ORDER BY timestamp DESC LIMIT 100")
@@ -145,7 +150,7 @@ def retrain_model():
     Triggers model retraining on combined baseline data and database logs.
     Includes a guard to ensure that at least 100 queries have been logged.
     """
-    conn = get_db_connection()
+    conn = get_logs_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT count(*) FROM query_logs")
@@ -176,6 +181,119 @@ def retrain_model():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retraining model: {str(e)}")
+
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.get("/database/status")
+def get_database_status():
+    """
+    Returns the active database metadata, file size, table count, and schema details.
+    """
+    db_path = database.ACTIVE_DB_PATH
+    is_demo = (db_path == database.DB_PATH)
+    name = os.path.basename(db_path)
+    
+    # Calculate size in MB
+    try:
+        size_bytes = os.path.getsize(db_path)
+        size_mb = round(size_bytes / (1024 * 1024), 2)
+    except Exception:
+        size_mb = 0.0
+        
+    tables_info = []
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+        tables = [r[0] for r in cursor.fetchall()]
+        
+        for table in tables:
+            # Row count
+            try:
+                cursor.execute(f"SELECT count(*) FROM [{table}]")
+                row_count = cursor.fetchone()[0]
+            except Exception:
+                row_count = 0
+                
+            # Columns
+            try:
+                cursor.execute(f"PRAGMA table_info([{table}])")
+                columns = [col['name'] for col in cursor.fetchall()]
+            except Exception:
+                columns = []
+                
+            tables_info.append({
+                "name": table,
+                "row_count": row_count,
+                "columns": columns
+            })
+        conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read database status: {str(e)}")
+        
+    return {
+        "is_demo": is_demo,
+        "database_name": name,
+        "size_mb": size_mb,
+        "table_count": len(tables_info),
+        "tables": tables_info
+    }
+
+@app.post("/database/upload")
+async def upload_database(file: UploadFile = File(...)):
+    """
+    Saves an uploaded SQLite database file and dynamically updates the active target database.
+    Verifies that the uploaded file is a valid SQLite3 database.
+    """
+    if not file.filename.endswith(('.db', '.sqlite', '.sqlite3')):
+        raise HTTPException(status_code=400, detail="Only .db, .sqlite, and .sqlite3 file formats are supported.")
+        
+    # Generate path for the uploaded file
+    target_path = os.path.join(UPLOAD_DIR, "user_database.db")
+    
+    # Save the file
+    try:
+        with open(target_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write uploaded file: {str(e)}")
+        
+    # Verify the SQLite file is valid
+    try:
+        test_conn = sqlite3.connect(target_path)
+        test_cursor = test_conn.cursor()
+        # Run a simple query to confirm SQLite is able to open it
+        test_cursor.execute("PRAGMA schema_version;")
+        test_cursor.fetchone()
+        test_conn.close()
+    except Exception as e:
+        # Delete invalid file to cleanup
+        if os.path.exists(target_path):
+            os.remove(target_path)
+        raise HTTPException(status_code=400, detail=f"The uploaded file is not a valid SQLite database: {str(e)}")
+        
+    # Update active database
+    database.set_active_database(target_path)
+    
+    # Clear the table sizes cache
+    clear_table_size_cache()
+    
+    # Return status of the newly loaded database
+    return get_database_status()
+
+@app.post("/database/reset")
+def reset_database():
+    """
+    Swaps the active target database back to the default e-commerce database.
+    """
+    database.reset_active_database()
+    
+    # Clear the table sizes cache
+    clear_table_size_cache()
+    
+    # Return status of default database
+    return get_database_status()
 
 if __name__ == '__main__':
     import uvicorn
