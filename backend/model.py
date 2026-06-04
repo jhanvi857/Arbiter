@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
-from database import get_db_connection
+from database import get_db_connection, get_logs_connection
 
 # Path to save/load the trained model
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cost_model.pkl')
@@ -172,7 +172,7 @@ def retrain_on_logs() -> dict:
     df_base = pd.read_csv(CSV_PATH)
     
     # 2. Retrieve logged queries from SQLite query_logs
-    conn = get_db_connection()
+    conn = get_logs_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT features, actual_cost FROM query_logs")
