@@ -30,8 +30,8 @@ graph TD
     end
     
     API_Client <-->|HTTP JSON Requests| API_Router
-    DB_Connection <-->|Query Plan & Execution| Local_SQLite[SQLite File: optimizer.db OR user_database.db]
-    Optimizer_Engine -->|Persistent Logs| Logs_SQLite[SQLite File: logs.db]
+    DB_Connection <-->|Query Plan & Execution| Local_SQLite[optimizer.db OR uploads/user_id/user_database.db]
+    Optimizer_Engine <-->|User & History Metadata| MongoDB[(MongoDB Server)]
 ```
 
 ---
@@ -119,10 +119,10 @@ The optimizer evaluates the original plan against proposed optimizations:
 *   **Index Suggestion**: Suggests creating a database index. To verify its effect, the system starts a transaction, creates the index temporarily, runs `EXPLAIN QUERY PLAN` to capture the updated features, predicts the cost, and then rolls back the transaction.
 *   **Limit Suggestion**: Suggests appending a LIMIT 100 clause (safely guarded against aggregation and grouping queries).
 
-The lower-cost plan is recommended and executed. Statistics (latency, feature profiles, and model error margins) are returned to the React frontend dashboard and logged to the `query_logs` SQLite table inside `logs.db`.
+The lower-cost plan is recommended and executed. Statistics (latency, feature profiles, and model error margins) are returned to the React frontend dashboard and logged to the `query_logs` collection in MongoDB.
 
-### 4. Dynamic Workspace Database Swapping
-*   Users can upload custom SQLite database files via the workbench UI.
-*   Upon upload, the backend validates the database signature, hot-swaps the active target connection, and clears table row count caches.
-*   A schema discovery endpoint scans the active database tables, row counts, and column definitions, displaying a dynamic schema explorer in the UI.
-*   **Limitation**: The current version of Arbiter is a single-user, personal portfolio application. It supports one active uploaded database globally at a time; session isolation is not supported. All query optimization history is logged in a single central `logs.db` file.
+### 4. Secure Dynamic Database Ingestion & Role-Based Isolation
+*   **Guest Preview Access**: Guest users (free tier) are locked to the default E-Commerce demo database (`optimizer.db`) for all queries, optimizations, and schema browsing. Database uploading is disabled and blocked for guests.
+*   **Logged-In User Access**: Logged-in users authenticate via secure JSON Web Tokens (JWT) and are permitted to upload custom SQLite databases (`.db`, `.sqlite`).
+*   **Multi-User Sandbox Isolation**: Custom database files are saved in unique user-specific directory paths (`uploads/{user_id}/user_database.db`). User mappings are stored in MongoDB, isolating queries and schema browsers per session.
+*   **MongoDB Analytics Logging**: Query execution statistics and performance metrics are logged inside a shared MongoDB collection namespaced by the authenticated user's ID, ensuring private query history views.
