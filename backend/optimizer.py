@@ -1,6 +1,6 @@
 import re
 import time
-from database import get_db_connection, get_logs_connection
+from database import get_db_connection, log_query_execution
 from feature_extractor import extract_features
 from model import predict_cost
 
@@ -133,7 +133,7 @@ def find_index_candidate(conn, sql: str, scanned_tables: list) -> tuple:
                     
     return None, None, None
 
-def optimize_query(original_sql: str) -> dict:
+def optimize_query(original_sql: str, user_id: str = None) -> dict:
     """
     Core optimizer logic:
     - Profiles Plan A (original).
@@ -295,25 +295,18 @@ def optimize_query(original_sql: str) -> dict:
         
         model_error_ms = abs(rec_predicted_cost - actual_cost_ms)
         
-        # Log to query_logs SQLite table
+        # Log to query_logs MongoDB collection
         # We log the original query features and Plan A predicted cost vs actual cost
-        import json
         try:
-            logs_conn = get_logs_connection()
-            cursor = logs_conn.cursor()
-            cursor.execute("""
-            INSERT INTO query_logs (query, features, predicted_cost, actual_cost)
-            VALUES (?, ?, ?, ?)
-            """, (
-                clean_sql + ";",
-                json.dumps(features_a),
-                pred_a["predicted_cost_ms"],
-                actual_cost_ms
-            ))
-            logs_conn.commit()
-            logs_conn.close()
+            log_query_execution(
+                user_id=user_id,
+                query=clean_sql + ";",
+                features=features_a,
+                predicted_cost=pred_a["predicted_cost_ms"],
+                actual_cost=actual_cost_ms
+            )
         except Exception as e:
-            print("Logging query failed:", e)
+            print("Logging query to MongoDB failed:", e)
             
         return {
             "original_query": clean_sql + ";",

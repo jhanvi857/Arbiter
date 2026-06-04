@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
-from database import get_db_connection, get_logs_connection
+from database import get_db_connection, mongo_db
 
 # Path to save/load the trained model
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cost_model.pkl')
@@ -158,31 +158,30 @@ def get_model_metadata() -> dict:
         "feature_importances": model_data["feature_importances"]
     }
 
-def retrain_on_logs() -> dict:
+def retrain_on_logs(user_id: str = None) -> dict:
     """
-    Reads query logs from the database query_logs table,
+    Reads query logs from the MongoDB query_logs collection,
     combines them with the baseline training_data.csv, and retrains the model.
-    Note: A guard will be checked in FastAPI to ensure at least 100 logs have accumulated.
     """
-    import json
-    
     # 1. Load initial training dataset
     if not os.path.exists(CSV_PATH):
         raise FileNotFoundError(f"Training data not found at {CSV_PATH}")
     df_base = pd.read_csv(CSV_PATH)
     
-    # 2. Retrieve logged queries from SQLite query_logs
-    conn = get_logs_connection()
+    # 2. Retrieve logged queries from MongoDB
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT features, actual_cost FROM query_logs")
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
+        query_filter = {}
+        if user_id:
+            query_filter = {"user_id": user_id}
+        cursor = mongo_db["query_logs"].find(query_filter)
+        rows = list(cursor)
+    except Exception as e:
+        print("Error fetching logs from MongoDB for retraining:", e)
+        rows = []
         
     log_rows = []
     for r in rows:
-        features_dict = json.loads(r['features'])
+        features_dict = r['features']
         row_data = {col: features_dict[col] for col in FEATURE_COLS}
         row_data["actual_latency_ms"] = r['actual_cost']
         log_rows.append(row_data)
