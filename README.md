@@ -10,13 +10,13 @@ The following diagram illustrates the structural connection between the frontend
 
 ```mermaid
 graph TD
-    subgraph Frontend (Next.js React Workbench)
+    subgraph Frontend ["Frontend (Next.js React Workbench)"]
         UI[React UI Editor & Analytics Dashboard]
         API_Client[API Fetch Client lib/arbiter-api.ts]
         UI <--> API_Client
     end
 
-    subgraph Backend (FastAPI Python ML Server)
+    subgraph Backend ["Backend (FastAPI Python ML Server)"]
         API_Router[FastAPI Endpoints main.py]
         Optimizer_Engine[Plan Optimizer optimizer.py]
         Feature_Extractor[SQL Feature Extractor feature_extractor.py]
