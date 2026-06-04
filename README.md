@@ -1,6 +1,6 @@
 # Arbiter: Database Query Optimizer
 
-Arbiter is a Machine Learning-assisted Database Query Optimizer project. It consists of a React-based Next.js frontend query workbench and a modular Python FastAPI backend. The backend acts as a cost estimator model to predict query execution latency based on structural features and SQLite EXPLAIN QUERY PLAN details, suggesting schema or syntax rewrites (Plan A vs Plan B) to optimize query performance.
+Arbiter is a Machine Learning-assisted Database Query Optimizer project. It consists of a Next.js and Tailwind CSS frontend query workbench and a modular Python FastAPI backend. The backend acts as a cost estimator model to predict query execution latency based on structural features and SQLite EXPLAIN QUERY PLAN details, suggesting schema or syntax rewrites (Plan A vs Plan B) to optimize query performance.
 
 ---
 
