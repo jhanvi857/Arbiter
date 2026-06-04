@@ -100,3 +100,36 @@ export function fetchModelStats() {
 export function fetchQueryHistory() {
   return requestJson<QueryHistoryItem[]>('/query/history')
 }
+
+export type DbTableInfo = {
+  name: string
+  row_count: number
+  columns: string[]
+}
+
+export type DbStatusResponse = {
+  is_demo: boolean
+  database_name: string
+  size_mb: number
+  table_count: number
+  tables: DbTableInfo[]
+}
+
+export function fetchDatabaseStatus() {
+  return requestJson<DbStatusResponse>('/database/status')
+}
+
+export function resetDatabase() {
+  return requestJson<DbStatusResponse>('/database/reset', {
+    method: 'POST',
+  })
+}
+
+export function uploadDatabase(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return requestJson<DbStatusResponse>('/database/upload', {
+    method: 'POST',
+    body: formData,
+  })
+}

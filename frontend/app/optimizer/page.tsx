@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Navbar } from '@/components/navbar'
 import { Footer } from '@/components/footer'
@@ -20,8 +20,17 @@ import {
   Layers,
   Info,
   Server,
+  Upload,
 } from 'lucide-react'
-import { optimizeQuery, type QueryOptimizeResponse } from '@/lib/arbiter-api'
+import { 
+  optimizeQuery, 
+  fetchDatabaseStatus, 
+  resetDatabase, 
+  uploadDatabase,
+  type QueryOptimizeResponse, 
+  type DbStatusResponse 
+} from '@/lib/arbiter-api'
+import { Toaster, toast } from 'sonner'
 
 const TEMPLATES = [
   {
@@ -75,6 +84,76 @@ export default function OptimizerPage() {
   const [currentStage, setCurrentStage] = useState(-1)
   const [result, setResult] = useState<QueryOptimizeResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Database status and dynamic ingestion states
+  const [dbStatus, setDbStatus] = useState<DbStatusResponse | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({})
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const loadDbStatus = async () => {
+    try {
+      const status = await fetchDatabaseStatus()
+      setDbStatus(status)
+    } catch (err) {
+      console.error('Failed to load database status:', err)
+    }
+  }
+
+  useEffect(() => {
+    loadDbStatus()
+  }, [])
+
+  const toggleTable = (tableName: string) => {
+    setExpandedTables((prev) => ({
+      ...prev,
+      [tableName]: !prev[tableName],
+    }))
+  }
+
+  const handleDbUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    const uploadToastId = toast.loading('Uploading database file...')
+
+    try {
+      const status = await uploadDatabase(file)
+      setDbStatus(status)
+      setResult(null)
+      setError(null)
+      // Pick a sample table from the uploaded database that isn't internal logs
+      if (status.tables.length > 0) {
+        const firstTable = status.tables.find((t) => t.name.toLowerCase() !== 'query_logs') || status.tables[0]
+        setSql(`SELECT * FROM ${firstTable.name} LIMIT 10;`)
+      } else {
+        setSql('')
+      }
+      toast.success(`Successfully uploaded "${file.name}"!`, { id: uploadToastId })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to upload database', { id: uploadToastId })
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleDbReset = async () => {
+    const resetToastId = toast.loading('Resetting database to E-Commerce demo database...')
+    try {
+      const status = await resetDatabase()
+      setDbStatus(status)
+      setResult(null)
+      setError(null)
+      setSql(TEMPLATES[0].sql)
+      toast.success('Reset back to demo database successfully!', { id: resetToastId })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reset database', { id: resetToastId })
+    }
+  }
 
   const handleTemplateClick = (template: (typeof TEMPLATES)[0]) => {
     setSql(template.sql)
@@ -134,22 +213,71 @@ export default function OptimizerPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/40 p-4">
-          <span className="mr-2 flex items-center gap-1.5 text-sm font-semibold text-foreground/80">
-            <Server className="h-4 w-4 text-primary" />
-            Load Template:
-          </span>
-          {TEMPLATES.map((template) => (
+        <div className="flex flex-col gap-4 rounded-xl border border-border bg-card/40 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-2 flex items-center gap-1.5 text-sm font-semibold text-foreground/80">
+              <Server className="h-4 w-4 text-primary" />
+              Load Template:
+            </span>
+            {TEMPLATES.map((template) => (
+              <Button
+                key={template.name}
+                variant="outline"
+                size="sm"
+                onClick={() => handleTemplateClick(template)}
+                className="border-border bg-card px-3 py-1.5 text-xs text-foreground hover:border-primary/50 hover:bg-primary/5"
+                disabled={dbStatus ? !dbStatus.is_demo : false}
+              >
+                {template.name}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 border-t border-border/40 pt-3 lg:border-t-0 lg:pt-0">
+            <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/50 px-3 py-1.5 text-xs">
+              <Database className="h-3.5 w-3.5 text-primary" />
+              <span className="font-medium text-foreground/80">Database:</span>
+              <span className="font-semibold text-foreground">{dbStatus?.database_name || 'optimizer.db'}</span>
+              {dbStatus && (
+                <span className="text-foreground/50">({dbStatus.size_mb.toFixed(2)} MB)</span>
+              )}
+              {dbStatus?.is_demo ? (
+                <Badge className="bg-primary/10 border border-primary/20 text-primary text-[10px] py-0 px-1.5 hover:bg-primary/20">Demo DB</Badge>
+              ) : (
+                <Badge className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] py-0 px-1.5 hover:bg-amber-500/20">Custom DB</Badge>
+              )}
+            </div>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleDbUpload}
+              accept=".db,.sqlite,.sqlite3"
+              className="hidden"
+            />
+
             <Button
-              key={template.name}
               variant="outline"
               size="sm"
-              onClick={() => handleTemplateClick(template)}
-              className="border-border bg-card px-3 py-1.5 text-xs text-foreground hover:border-primary/50 hover:bg-primary/5"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1 border-primary/20 bg-primary/5 text-xs font-semibold text-primary hover:bg-primary/10 hover:border-primary/40 cursor-pointer"
+              disabled={isUploading}
             >
-              {template.name} ({template.db})
+              <Upload className="h-3 w-3" />
+              {isUploading ? 'Uploading...' : 'Upload DB'}
             </Button>
-          ))}
+
+            {dbStatus && !dbStatus.is_demo && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDbReset}
+                className="border-border bg-card text-xs text-foreground hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive cursor-pointer"
+              >
+                Reset to Demo
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="grid items-start gap-8 lg:grid-cols-12">
@@ -232,6 +360,71 @@ export default function OptimizerPage() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Database Schema Browser */}
+            <Card className="border border-border bg-card/60 shadow-md">
+              <CardHeader className="pb-3 border-b border-border/40">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-sm font-bold text-foreground">Database Schema Browser</CardTitle>
+                  </div>
+                  {dbStatus && (
+                    <Badge variant="outline" className="text-[10px] font-semibold text-foreground/75 bg-background border-border/50">
+                      {dbStatus.table_count} {dbStatus.table_count === 1 ? 'Table' : 'Tables'}
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-0 max-h-80 overflow-y-auto divide-y divide-border/30">
+                {dbStatus && dbStatus.tables.length > 0 ? (
+                  dbStatus.tables.map((table) => {
+                    const isExpanded = expandedTables[table.name]
+                    return (
+                      <div key={table.name} className="flex flex-col bg-card/10 hover:bg-card/30 transition-colors">
+                        <button
+                          onClick={() => toggleTable(table.name)}
+                          className="flex items-center justify-between w-full px-4 py-2.5 text-left focus:outline-none cursor-pointer"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-semibold text-foreground">
+                              {table.name}
+                            </span>
+                            <span className="text-[10px] text-foreground/50 font-normal">
+                              ({table.row_count.toLocaleString()} rows)
+                            </span>
+                          </div>
+                          <span className="text-foreground/40 text-xs font-semibold select-none">
+                            {isExpanded ? '▼' : '▶'}
+                          </span>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-4 pb-3 pt-1 border-t border-dashed border-border/20 bg-muted/10">
+                            <div className="text-[9px] font-bold text-foreground/40 uppercase tracking-wider mb-1.5">Columns</div>
+                            <div className="flex flex-wrap gap-1">
+                              {table.columns.map((column) => (
+                                <Badge
+                                  key={column}
+                                  variant="outline"
+                                  className="font-mono text-[9px] py-0 px-1.5 border-border/40 bg-background text-foreground/75"
+                                >
+                                  {column}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="p-6 text-center text-xs text-foreground/50">
+                    No tables found in the active database.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           <div className="lg:col-span-7">
@@ -362,14 +555,28 @@ export default function OptimizerPage() {
                 </Card>
               </motion.div>
             ) : (
-              <div className="flex min-h-155 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/20 p-8 text-center">
+              <div className="flex min-h-155 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/20 p-8 text-center animate-fade-in">
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-primary/20 bg-primary/5">
-                  <Database className="h-8 w-8 text-primary" />
+                  <Database className="h-8 w-8 text-primary animate-pulse" />
                 </div>
-                <h3 className="text-lg font-bold text-foreground">Waiting for SQL Input</h3>
-                <p className="mt-2 max-w-sm text-sm text-foreground/70">
-                  Configure a query in the editor and click Optimize Query to fetch live predictions and measured latency from the backend.
-                </p>
+                {dbStatus && !dbStatus.is_demo ? (
+                  <>
+                    <h3 className="text-lg font-bold text-foreground">Custom Database Active</h3>
+                    <p className="mt-2 max-w-sm text-sm text-foreground/70">
+                      The custom database <code className="font-semibold text-primary">{dbStatus.database_name}</code> was loaded successfully.
+                    </p>
+                    <div className="mt-4 rounded-lg bg-primary/5 border border-primary/10 px-4 py-3 text-xs text-foreground/80 max-w-md">
+                      <strong>Schema update complete!</strong> Check the schema browser on the left to see the tables and columns. Enter a query in the editor and click <strong>Optimize Query</strong> to begin analysis.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-bold text-foreground">Waiting for SQL Input</h3>
+                    <p className="mt-2 max-w-sm text-sm text-foreground/70">
+                      Configure a query in the editor and click Optimize Query to fetch live predictions and measured latency from the backend.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -377,6 +584,7 @@ export default function OptimizerPage() {
       </main>
 
       <Footer />
+      <Toaster position="bottom-right" richColors />
     </div>
   )
 }
