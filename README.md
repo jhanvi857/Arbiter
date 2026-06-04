@@ -6,7 +6,7 @@ Arbiter is a Machine Learning-assisted Database Query Optimizer project. It cons
 
 ## Monorepo Architecture
 
-The following diagram illustrates the structural connection between the frontend workbench and the backend machine learning cost engine:
+The following diagram illustrates the structural connection between the frontend workbench, the backend machine learning cost engine, and the separated execution and logging database paths:
 
 ```mermaid
 graph TD
@@ -21,7 +21,7 @@ graph TD
         Optimizer_Engine[Plan Optimizer optimizer.py]
         Feature_Extractor[SQL Feature Extractor feature_extractor.py]
         ML_Estimator[Random Forest Predictor model.py]
-        DB_Connection[SQLite Database database.py]
+        DB_Connection[Active Workspace Database database.py]
         
         API_Router <--> Optimizer_Engine
         Optimizer_Engine <--> Feature_Extractor
@@ -30,7 +30,8 @@ graph TD
     end
     
     API_Client <-->|HTTP JSON Requests| API_Router
-    DB_Connection <-->|SQL Transaction Checks| Local_SQLite[SQLite File: optimizer.db]
+    DB_Connection <-->|Query Plan & Execution| Local_SQLite[SQLite File: optimizer.db OR user_database.db]
+    Optimizer_Engine -->|Persistent Logs| Logs_SQLite[SQLite File: logs.db]
 ```
 
 ---
@@ -48,12 +49,14 @@ Arbiter/
 │
 ├── backend/              # Python FastAPI ML Engine
 │   ├── main.py           # API endpoints (execute, optimize, stats, logs)
-│   ├── database.py       # SQLite connection and query_logs configuration
+│   ├── database.py       # SQLite connections (workspace DB vs logs.db)
 │   ├── feature_extractor.py # SQL parsing and heuristic row estimation
 │   ├── model.py          # Machine learning model training and prediction
 │   ├── optimizer.py      # Rewrite evaluations (Index, Limit, Subquery)
 │   ├── data_generator.py # Profiling dataset generation (57K rows, 600 runs)
 │   ├── requirements.txt  # Python package requirements
+│   ├── logs.db           # Persistent query logging database
+│   ├── uploads/          # Directory containing active uploaded database
 │   └── .gitignore        # Caches and runtime environment exclusions
 │
 ├── .gitignore            # Root git ignore config
@@ -116,4 +119,10 @@ The optimizer evaluates the original plan against proposed optimizations:
 *   **Index Suggestion**: Suggests creating a database index. To verify its effect, the system starts a transaction, creates the index temporarily, runs `EXPLAIN QUERY PLAN` to capture the updated features, predicts the cost, and then rolls back the transaction.
 *   **Limit Suggestion**: Suggests appending a LIMIT 100 clause (safely guarded against aggregation and grouping queries).
 
-The lower-cost plan is recommended and executed. Statistics (latency, feature profiles, and model error margins) are returned to the React frontend dashboard and logged to the `query_logs` SQLite table.
+The lower-cost plan is recommended and executed. Statistics (latency, feature profiles, and model error margins) are returned to the React frontend dashboard and logged to the `query_logs` SQLite table inside `logs.db`.
+
+### 4. Dynamic Workspace Database Swapping
+*   Users can upload custom SQLite database files via the workbench UI.
+*   Upon upload, the backend validates the database signature, hot-swaps the active target connection, and clears table row count caches.
+*   A schema discovery endpoint scans the active database tables, row counts, and column definitions, displaying a dynamic schema explorer in the UI.
+*   **Limitation**: The current version of Arbiter is a single-user, personal portfolio application. It supports one active uploaded database globally at a time; session isolation is not supported. All query optimization history is logged in a single central `logs.db` file.
