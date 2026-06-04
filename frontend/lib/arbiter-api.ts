@@ -64,6 +64,14 @@ async function requestJson<T>(path: string, options: ApiOptions = {}): Promise<T
     headers.set('Content-Type', 'application/json')
   }
 
+  // Inject standard bearer token header from localStorage
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('token')
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+  }
+
   const response = await fetch(`${BACKEND_URL}${path}`, {
     ...options,
     headers,
@@ -131,5 +139,25 @@ export function uploadDatabase(file: File) {
   return requestJson<DbStatusResponse>('/database/upload', {
     method: 'POST',
     body: formData,
+  })
+}
+
+export type AuthResponse = {
+  token: string
+  email: string
+  name: string
+}
+
+export function loginUser(payload: Record<string, string>) {
+  return requestJson<AuthResponse>('/auth/login', {
+    method: 'POST',
+    json: payload,
+  })
+}
+
+export function signupUser(payload: Record<string, string>) {
+  return requestJson<AuthResponse>('/auth/signup', {
+    method: 'POST',
+    json: payload,
   })
 }
