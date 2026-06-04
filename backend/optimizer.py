@@ -1,6 +1,6 @@
 import re
 import time
-from database import get_db_connection
+from database import get_db_connection, get_logs_connection
 from feature_extractor import extract_features
 from model import predict_cost
 
@@ -299,7 +299,8 @@ def optimize_query(original_sql: str) -> dict:
         # We log the original query features and Plan A predicted cost vs actual cost
         import json
         try:
-            cursor = conn.cursor()
+            logs_conn = get_logs_connection()
+            cursor = logs_conn.cursor()
             cursor.execute("""
             INSERT INTO query_logs (query, features, predicted_cost, actual_cost)
             VALUES (?, ?, ?, ?)
@@ -309,6 +310,8 @@ def optimize_query(original_sql: str) -> dict:
                 pred_a["predicted_cost_ms"],
                 actual_cost_ms
             ))
+            logs_conn.commit()
+            logs_conn.close()
         except Exception as e:
             print("Logging query failed:", e)
             
