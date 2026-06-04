@@ -1,0 +1,26 @@
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# SQLite databases and journals
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Generated datasets and machine learning models
+*.csv
+*.pkl
+
+# IDE and environment files
+.vscode/
+.idea/
+.env
+.pytest_cache/
