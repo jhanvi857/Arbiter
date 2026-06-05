@@ -37,12 +37,12 @@ const TEMPLATES = [
   {
     name: 'Unindexed Filter Query',
     db: 'SQLite',
-    sql: `SELECT *
-FROM orders
-WHERE customer_id = 45920
-  AND status = 'pending'
-ORDER BY created_at DESC
-LIMIT 50;`,
+    sql: `SELECT oi.id, oi.price 
+FROM order_items oi 
+JOIN products p ON oi.product_id = p.id 
+WHERE oi.price > (
+    SELECT AVG(p2.price) FROM products p2 WHERE p2.category = p.category
+);`,
   },
   {
     name: 'Heavy Three-Way JOIN',

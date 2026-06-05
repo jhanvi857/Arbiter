@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardContent, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { loginUser } from '@/lib/arbiter-api'
+import { loginUser, resendVerification } from '@/lib/arbiter-api'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -17,10 +17,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showResend, setShowResend] = useState(false)
+  const [resendStatus, setResendStatus] = useState<string | null>(null)
+  const [isResending, setIsResending] = useState(false)
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setError(null)
+    setShowResend(false)
+    setResendStatus(null)
     setIsSubmitting(true)
 
     try {
@@ -30,7 +35,11 @@ export default function LoginPage() {
       localStorage.setItem('userName', res.name)
       router.push('/optimizer')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid login credentials')
+      const msg = err instanceof Error ? err.message : 'Invalid login credentials'
+      setError(msg)
+      if (msg.toLowerCase().includes('not verified') || msg.toLowerCase().includes('verify')) {
+        setShowResend(true)
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -118,6 +127,35 @@ export default function LoginPage() {
               {error && (
                 <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-500 text-center">
                   {error}
+                </div>
+              )}
+
+              {showResend && (
+                <div className="rounded-lg bg-primary/10 border border-primary/20 px-4 py-3 text-xs text-primary text-center flex flex-col gap-2">
+                  <p className="font-semibold text-primary">Didn't receive the verification email?</p>
+                  <Button 
+                    type="button" 
+                    variant="link" 
+                    className="h-auto p-0 text-xs font-bold text-primary underline hover:text-primary/80 cursor-pointer"
+                    disabled={isResending}
+                    onClick={async () => {
+                      setIsResending(true)
+                      setResendStatus(null)
+                      try {
+                        const res = await resendVerification(email)
+                        setResendStatus(res.message || "Verification email resent successfully!")
+                      } catch (err) {
+                        setResendStatus(err instanceof Error ? err.message : "Failed to resend verification email")
+                      } finally {
+                        setIsResending(false)
+                      }
+                    }}
+                  >
+                    {isResending ? "Resending Link..." : "Resend Verification Link"}
+                  </Button>
+                  {resendStatus && (
+                    <p className="text-[11px] font-medium text-primary mt-1">{resendStatus}</p>
+                  )}
                 </div>
               )}
 

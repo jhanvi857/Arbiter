@@ -167,6 +167,18 @@ export type AuthResponse = {
   name: string
 }
 
+export type SignupResponse = {
+  message: string
+}
+
+export type VerifyEmailResponse = {
+  message: string
+}
+
+export type ResendVerificationResponse = {
+  message: string
+}
+
 export function loginUser(payload: Record<string, string>) {
   return requestJson<AuthResponse>('/auth/login', {
     method: 'POST',
@@ -175,8 +187,21 @@ export function loginUser(payload: Record<string, string>) {
 }
 
 export function signupUser(payload: Record<string, string>) {
-  return requestJson<AuthResponse>('/auth/signup', {
+  return requestJson<SignupResponse>('/auth/signup', {
     method: 'POST',
     json: payload,
   })
-}
+}
+
+export function verifyEmail(token: string) {
+  return requestJson<VerifyEmailResponse>(`/auth/verify?token=${encodeURIComponent(token)}`, {
+    method: 'GET',
+  })
+}
+
+export function resendVerification(email: string) {
+  return requestJson<ResendVerificationResponse>('/auth/resend-verification', {
+    method: 'POST',
+    json: { email },
+  })
+}
