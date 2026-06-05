@@ -8,4 +8,4 @@ sqlparse
 python-multipart
 pymongo
 pyjwt
-
+xgboost

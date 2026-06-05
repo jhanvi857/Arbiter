@@ -147,8 +147,67 @@ export function AnalyticsSection() {
           whileInView="visible"
           viewport={{ once: true }}
         >
+          {modelStats && (
+            <motion.div variants={itemVariants} className="col-span-full">
+              <Card className="border-border bg-card p-6">
+                <h3 className="mb-2 text-xl font-bold text-foreground">Machine Learning Model Comparison</h3>
+                <p className="mb-6 text-sm text-foreground/80">
+                  Evaluates regressor candidates on the multi-scale dataset (600 profiles). The **Template Split** tests generalization by completely withholding 8 query structures (20% of templates) from training.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-xs font-semibold uppercase text-foreground/60">
+                        <th className="py-3 px-4">Model Candidate</th>
+                        <th className="py-3 px-4 text-right">Random Split MAE (ms)</th>
+                        <th className="py-3 px-4 text-right">Random Split RMSE (ms)</th>
+                        <th className="py-3 px-4 text-right">Random Split R²</th>
+                        <th className="py-3 px-4 text-right">Template Split MAE (ms)</th>
+                        <th className="py-3 px-4 text-right">Template Split RMSE (ms)</th>
+                        <th className="py-3 px-4 text-right">Template Split R²</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40">
+                      <tr className="hover:bg-foreground/5">
+                        <td className="py-3 px-4 font-medium text-foreground">Linear Regression (Baseline)</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.lr_mae_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.lr_rmse_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.lr_r2_score.toFixed(4)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.lr_unseen_mae_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.lr_unseen_rmse_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.lr_unseen_r2_score.toFixed(4)}</td>
+                      </tr>
+                      <tr className="hover:bg-foreground/5 bg-primary/5 border-l-2 border-primary">
+                        <td className="py-3 px-4 font-semibold text-foreground flex items-center gap-2">
+                          Random Forest Regressor
+                          <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Active</span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-medium text-foreground">{modelStats.rf_mae_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right font-medium text-foreground">{modelStats.rf_rmse_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right font-medium text-foreground">{modelStats.rf_r2_score.toFixed(4)}</td>
+                        <td className="py-3 px-4 text-right font-medium text-foreground">{modelStats.rf_unseen_mae_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right font-medium text-foreground">{modelStats.rf_unseen_rmse_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right font-medium text-foreground">{modelStats.rf_unseen_r2_score.toFixed(4)}</td>
+                      </tr>
+                      <tr className="hover:bg-foreground/5">
+                        <td className="py-3 px-4 font-medium text-foreground">XGBoost Regressor (Boosting)</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.xgb_mae_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.xgb_rmse_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.xgb_r2_score.toFixed(4)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.xgb_unseen_mae_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.xgb_unseen_rmse_ms.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-foreground/80">{modelStats.xgb_unseen_r2_score.toFixed(4)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
           <motion.div variants={itemVariants}>
             <Card className="border-border bg-card p-6">
+
               <h3 className="mb-6 font-semibold text-foreground">Query Execution Costs</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={chartData}>

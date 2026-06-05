@@ -3,13 +3,16 @@ import time
 import urllib.request
 import urllib.error
 import json
+import os
 import sys
 
 def run_test():
     print("Starting FastAPI server in a background process...")
     # Start uvicorn server
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
     server_process = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"],
+        cwd=backend_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )

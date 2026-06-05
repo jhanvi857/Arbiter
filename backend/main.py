@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import re
 import sqlite3
 import shutil
 import hashlib
@@ -199,11 +200,14 @@ def optimize_sql(request_body: QueryRequest, request: Request):
     if not sql:
         raise HTTPException(status_code=400, detail="SQL query cannot be empty")
         
-    # Check if the query starts with SELECT (only optimize SELECT statements)
-    if not sql.upper().startswith("SELECT") and not sql.upper().startswith("EXPLAIN"):
+    # Strip leading comments and whitespace
+    cleaned_sql = re.sub(r'^\s*(?:--.*?\n|/\*.*?\*/)\s*', '', sql, flags=re.DOTALL).strip()
+    upper_cleaned = cleaned_sql.upper()
+    
+    if not any(upper_cleaned.startswith(prefix) for prefix in ["SELECT", "EXPLAIN", "WITH"]):
         raise HTTPException(
             status_code=400, 
-            detail="The ML Optimizer currently only supports SELECT query plans."
+            detail="The ML Optimizer currently only supports SELECT, EXPLAIN, and WITH query plans."
         )
         
     try:

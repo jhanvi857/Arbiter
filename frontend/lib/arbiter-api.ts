@@ -38,7 +38,26 @@ export type ExecuteQueryResponse = {
 export type ModelStatsResponse = {
   model: string
   mae_ms: number
+  rmse_ms: number
   r2_score: number
+  rf_mae_ms: number
+  rf_rmse_ms: number
+  rf_r2_score: number
+  xgb_mae_ms: number
+  xgb_rmse_ms: number
+  xgb_r2_score: number
+  lr_mae_ms: number
+  lr_rmse_ms: number
+  lr_r2_score: number
+  rf_unseen_mae_ms: number
+  rf_unseen_rmse_ms: number
+  rf_unseen_r2_score: number
+  xgb_unseen_mae_ms: number
+  xgb_unseen_rmse_ms: number
+  xgb_unseen_r2_score: number
+  lr_unseen_mae_ms: number
+  lr_unseen_rmse_ms: number
+  lr_unseen_r2_score: number
   training_samples: number
   feature_importances: Record<string, number>
 }
