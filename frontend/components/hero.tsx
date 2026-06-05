@@ -140,9 +140,9 @@ export function HeroSection() {
               <Button
                 size="lg"
                 variant="outline"
-                className="border-primary/30 text-foreground hover:bg-primary/5"
+                className="border-primary/30 text-foreground hover:bg-primary/10 hover:text-primary"
               >
-                View Architecture
+                <Link href="/architecture">View Architecture</Link>
               </Button>
             </motion.div>
           </motion.div>
