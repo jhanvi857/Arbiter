@@ -1,6 +1,7 @@
 import re
 import sqlparse
 from database import get_db_connection
+from typing import Optional
 
 # Cache for table sizes to avoid querying the database repeatedly
 # Keyed by {db_file_path: {table_name: count}}
@@ -80,7 +81,7 @@ def count_conditions(query: str) -> int:
         
     return count
 
-def extract_limit_value(query: str) -> int:
+def extract_limit_value(query: str) -> Optional[int]:
     """
     Extracts the integer limit value from the query if it exists.
     """
@@ -91,7 +92,7 @@ def extract_limit_value(query: str) -> int:
 
 def extract_features(query: str, conn=None) -> dict:
     """
-    Parses and extracts 7 machine learning features from a SQL query.
+    Parses and extracts 14 advanced machine learning features from a SQL query.
     Requires a connection to SQLite database to run EXPLAIN QUERY PLAN and read table sizes.
     """
     # Create connection if not provided
@@ -102,34 +103,59 @@ def extract_features(query: str, conn=None) -> dict:
         
     # Standard text-based query flags
     has_join = 1 if re.search(r'\bJOIN\b', query, re.IGNORECASE) or ',' in query.split('FROM')[-1].split('WHERE')[0] else 0
+    join_count = len(re.findall(r'\bJOIN\b', query, re.IGNORECASE))
+    
     has_group_by = 1 if re.search(r'\bGROUP\s+BY\b', query, re.IGNORECASE) else 0
     has_order_by = 1 if re.search(r'\bORDER\s+BY\b', query, re.IGNORECASE) else 0
     has_limit = 1 if re.search(r'\bLIMIT\b', query, re.IGNORECASE) else 0
+    
+    limit_val = extract_limit_value(query)
+    if limit_val is None:
+        limit_val = 100000.0  # Large default number representing "unlimited" for numerical scaling
+    else:
+        limit_val = float(limit_val)
+        
     num_conditions = count_conditions(query)
     
+    # 1. Count sort columns
+    sort_columns_count = 0
+    order_match = re.search(r'\bORDER\s+BY\b\s+([^;LIMIT\n]+)', query, re.IGNORECASE)
+    if order_match:
+        sort_columns_count = len(order_match.group(1).split(','))
+        
+    # 2. Count subqueries (SELECT count minus main select)
+    nested_subquery_count = max(0, len(re.findall(r'\bSELECT\b', query, re.IGNORECASE)) - 1)
+    
+    # 3. Count aggregate functions
+    aggregates = [r'\bCOUNT\s*\(', r'\bSUM\s*\(', r'\bAVG\s*\(', r'\bMIN\s*\(', r'\bMAX\s*\(']
+    aggregation_count = 0
+    for agg in aggregates:
+        aggregation_count += len(re.findall(agg, query.upper()))
+        
     # Run EXPLAIN QUERY PLAN to parse the query structure and SQLite's query plan
     scan_cost_estimate = 0.0
     tables_found = set()
+    index_usage_count = 0
     
     try:
         cursor = conn.cursor()
         cursor.execute(f"EXPLAIN QUERY PLAN {query}")
         plan_rows = cursor.fetchall()
         
-        # Details look like:
-        # - SCAN table_name
-        # - SEARCH table_name USING INDEX index_name (col=?)
-        # - SEARCH table_name USING INTEGER PRIMARY KEY (rowid=?)
-        # - USE TEMP B-TREE FOR ORDER BY / GROUP BY
         for row in plan_rows:
-            detail = row['detail']
+            if hasattr(row, 'keys') and 'detail' in row.keys():
+                detail = row['detail']
+            else:
+                try:
+                    detail = row['detail']
+                except Exception:
+                    detail = row[-1]
             
             # Match SCAN table_name
             scan_match = re.search(r'\bSCAN\s+([a-zA-Z0-9_]+)\b', detail)
             if scan_match:
                 table_name = scan_match.group(1)
                 tables_found.add(table_name)
-                # Table scan cost is equal to the table size
                 scan_cost_estimate += get_table_size(conn, table_name)
                 
             # Match SEARCH table_name
@@ -140,14 +166,13 @@ def extract_features(query: str, conn=None) -> dict:
                 
                 # Check search complexity (Primary key lookup vs Index traversal)
                 if "USING INTEGER PRIMARY KEY" in detail:
-                    # Single row lookup
                     scan_cost_estimate += 1.0
+                    index_usage_count += 1
                 elif "USING INDEX" in detail or "USING COVERING INDEX" in detail:
-                    # Traverses an index. Estimate cost as 5% of table size (or minimum 1)
                     table_sz = get_table_size(conn, table_name)
                     scan_cost_estimate += max(1.0, 0.05 * table_sz)
+                    index_usage_count += 1
                 else:
-                    # Fallback to 10% if search method unspecified
                     table_sz = get_table_size(conn, table_name)
                     scan_cost_estimate += max(1.0, 0.10 * table_sz)
             
@@ -155,27 +180,20 @@ def extract_features(query: str, conn=None) -> dict:
             if "USE TEMP B-TREE" in detail:
                 scan_cost_estimate += 500.0
                 
-    except Exception as e:
-        # If EXPLAIN QUERY PLAN fails, we fall back to a pure static regex parsing
-        # This is a safety guard to prevent server crashes on invalid SQL syntax
+    except Exception:
         pass
-
-    # Find tables using regex if query plan didn't return any (e.g. invalid query or static SELECT)
+ 
     if not tables_found:
-        # Look for table names in FROM and JOIN clauses
-        # Very simple extraction:
         from_matches = re.findall(r'\b(?:FROM|JOIN)\s+([a-zA-Z0-9_]+)\b', query, re.IGNORECASE)
         for tbl in from_matches:
             tables_found.add(tbl)
             
     num_tables = len(tables_found)
+    table_sizes = sum(get_table_size(conn, tbl) for tbl in tables_found)
     
-    # If there's a LIMIT, apply a cost cap ONLY IF there's no sorting/grouping,
-    # because sort/group requires scanning the full dataset before limiting.
-    if has_limit:
-        limit_val = extract_limit_value(query)
-        if limit_val is not None and not has_group_by and not has_order_by:
-            scan_cost_estimate = min(scan_cost_estimate, float(limit_val))
+    if has_limit and limit_val < 100000.0:
+        if not has_group_by and not has_order_by:
+            scan_cost_estimate = min(scan_cost_estimate, limit_val)
             
     if close_conn:
         conn.close()
@@ -184,8 +202,15 @@ def extract_features(query: str, conn=None) -> dict:
         "num_tables": num_tables,
         "num_conditions": num_conditions,
         "has_join": has_join,
+        "join_count": join_count,
         "has_group_by": has_group_by,
         "has_order_by": has_order_by,
         "has_limit": has_limit,
-        "scan_cost_estimate": scan_cost_estimate
+        "limit_val": limit_val,
+        "scan_cost_estimate": scan_cost_estimate,
+        "table_sizes": float(table_sizes),
+        "index_usage_count": index_usage_count,
+        "aggregation_count": aggregation_count,
+        "sort_columns_count": sort_columns_count,
+        "nested_subquery_count": nested_subquery_count
     }
