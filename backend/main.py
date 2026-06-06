@@ -79,19 +79,75 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "Arbiter")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", None)
 SMTP_FROM = os.getenv("SMTP_FROM", "noreply@arbiter.com")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 
 def send_verification_email(email: str, name: str, token: str):
-    """
-    Sends a verification email to the user.
-    If SMTP_USERNAME and SMTP_PASSWORD are not configured, prints the verification link to the console.
-    """
     verify_link = f"{FRONTEND_URL}/verify?token={token}"
+    
+    # Check if Resend is configured
+    if RESEND_API_KEY:
+        print(f"Sending verification email to {email} via Resend API...")
+        import urllib.request
+        import urllib.error
+        import json
+        
+        url = "https://api.resend.com/emails"
+        headers = {
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        # HTML template
+        html_content = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #dddddd; border-radius: 8px;">
+              <h2 style="color: #D85B53; text-align: center;">Welcome to Arbiter!</h2>
+              <p>Hi {name},</p>
+              <p>Thank you for signing up for Arbiter, the ML-assisted Database Query Optimizer.</p>
+              <p>Please click the button below to verify your email address and activate your account:</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="{verify_link}" style="background-color: #D85B53; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Verify Email Address</a>
+              </div>
+              <p>If the button doesn't work, copy and paste this link into your browser:</p>
+              <p style="word-break: break-all;"><a href="{verify_link}">{verify_link}</a></p>
+              <hr style="border: 0; border-top: 1px solid #eeeeee; margin: 20px 0;" />
+              <p style="font-size: 12px; color: #777777; text-align: center;">This link will expire in 24 hours. If you did not sign up for an Arbiter account, please ignore this email.</p>
+            </div>
+          </body>
+        </html>
+        """
+        
+        data = {
+            "from": SMTP_FROM,
+            "to": [email],
+            "subject": "Verify Your Arbiter Account",
+            "html": html_content
+        }
+        
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(data).encode("utf-8"),
+                headers=headers,
+                method="POST"
+            )
+            with urllib.request.urlopen(req) as response:
+                print(f"Successfully sent email via Resend API to {email}")
+                return
+        except urllib.error.HTTPError as e:
+            err_msg = e.read().decode("utf-8")
+            print(f"Resend API error sending email to {email}: {e.code} - {err_msg}")
+        except Exception as e:
+            print(f"Resend network error sending email to {email}: {e}")
+
+    # Fallback to SMTP
     if not SMTP_USERNAME or not SMTP_PASSWORD:
         print("\n" + "="*80)
         print(f"VERIFICATION FALLBACK - LINK FOR {email}:")
         print(verify_link)
         print("="*80 + "\n")
-        print("SMTP credentials are not configured. Verification email printed to console only.")
+        print("SMTP credentials are not configured and Resend API is not set. Verification link printed to console only.")
         return
 
     print(f"Sending verification email to {email} via SMTP...")
@@ -136,9 +192,9 @@ def send_verification_email(email: str, name: str, token: str):
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
         server.sendmail(SMTP_FROM, email, msg.as_string())
         server.quit()
-        print(f"Successfully sent verification email to {email}")
+        print(f"Successfully sent verification email via SMTP to {email}")
     except Exception as e:
-        print(f"Error sending email to {email}: {e}")
+        print(f"Error sending email via SMTP to {email}: {e}")
 
 def utc_now() -> datetime.datetime:
     """Generates a timezone-naive UTC datetime to replace deprecated utcnow()."""
