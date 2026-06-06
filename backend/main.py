@@ -94,7 +94,8 @@ def send_verification_email(email: str, name: str, token: str):
         url = "https://api.resend.com/emails"
         headers = {
             "Authorization": f"Bearer {RESEND_API_KEY}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": "ArbiterApp/1.0"
         }
         
         # HTML template
