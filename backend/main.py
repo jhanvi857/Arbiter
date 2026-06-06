@@ -12,35 +12,8 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Header, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from bson import ObjectId
-import database
-from database import get_db_connection, init_db, get_query_history_from_mongo
-from optimizer import optimize_query
-from model import get_model_metadata, retrain_on_logs
-from feature_extractor import clear_table_size_cache
 
-app = FastAPI(
-    title="Arbiter DB Query Optimizer API",
-    description="Machine Learning assisted query planner and cost estimation engine for SQLite.",
-    version="1.0.0"
-)
-
-# Enable CORS for frontend integration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Permits access from local UI developers (localhost:3000, etc.)
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# JWT Auth Configuration
-JWT_SECRET = "arbiter_jwt_secret_key_change_me_in_prod"
-
-# SMTP Email Configuration
+# SMTP Email Configuration & Environment Initialization
 def load_dotenv():
     # Search for .env files in common locations and load them manually
     for env_file in [".env", "../.env", "backend/.env", "../backend/.env"]:
@@ -58,7 +31,47 @@ def load_dotenv():
             except Exception as e:
                 print(f"Error reading {env_file} manual parse: {e}")
 
+# Load environment variables early so import modules like database can access them
 load_dotenv()
+
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Header, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from bson import ObjectId
+import database
+from database import get_db_connection, init_db, get_query_history_from_mongo
+from optimizer import optimize_query
+from model import get_model_metadata, retrain_on_logs
+from feature_extractor import clear_table_size_cache
+
+app = FastAPI(
+    title="Arbiter DB Query Optimizer API",
+    description="Machine Learning assisted query planner and cost estimation engine for SQLite.",
+    version="1.0.0"
+)
+
+# Enable CORS for frontend integration
+origins = [
+    "https://arbiter-neon-seven.vercel.app",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    cleaned_url = frontend_url.rstrip("/")
+    if cleaned_url not in origins:
+        origins.append(cleaned_url)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# JWT Auth Configuration
+JWT_SECRET = os.getenv("JWT_SECRET")
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
