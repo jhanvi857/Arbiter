@@ -1,17 +1,9 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Github, Mail, ExternalLink } from 'lucide-react'
+import { Github, Mail } from 'lucide-react'
 
 export function Footer() {
-  const links = [
-    { label: 'GitHub', icon: Github, href: '#' },
-    { label: 'Documentation', href: '#' },
-    { label: 'API', href: '#' },
-    { label: 'Team', href: '#' },
-    { label: 'Contact', icon: Mail, href: '#' },
-  ]
-
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -55,7 +47,7 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Main Footer Content */}
         <motion.div
-          className="mb-8 grid gap-8 sm:grid-cols-2 md:grid-cols-4"
+          className="mb-8 grid gap-8 sm:grid-cols-2 md:grid-cols-3"
           variants={containerVariants}
           initial="hidden"
           whileInView="visible"
@@ -74,15 +66,13 @@ export function Footer() {
             </p>
           </motion.div>
 
-          {/* Product Links */}
+          {/* Workbench Links */}
           <motion.div variants={itemVariants}>
-            <h3 className="mb-4 font-semibold text-foreground">Product</h3>
+            <h3 className="mb-4 font-semibold text-foreground">Workbench</h3>
             <ul className="space-y-2">
               {[
-                { name: 'Features', href: '/#features' },
-                { name: 'Pricing', href: '/#pricing' },
-                { name: 'Documentation', href: '/architecture' },
-                { name: 'API', href: '/#api' },
+                { name: 'Query Optimizer', href: '/optimizer' },
+                { name: 'System Architecture', href: '/architecture' },
               ].map((link) => (
                 <li key={link.name}>
                   <a
@@ -96,37 +86,14 @@ export function Footer() {
             </ul>
           </motion.div>
 
-          {/* Company Links */}
+          {/* Technology Column */}
           <motion.div variants={itemVariants}>
-            <h3 className="mb-4 font-semibold text-foreground">Company</h3>
-            <ul className="space-y-2">
-              {['About', 'Blog', 'Careers', 'Contact'].map((link) => (
-                <li key={link}>
-                  <a
-                    href="#"
-                    className="text-sm text-foreground/95 transition-colors hover:text-primary"
-                  >
-                    {link}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </motion.div>
-
-          {/* Legal Links */}
-          <motion.div variants={itemVariants}>
-            <h3 className="mb-4 font-semibold text-foreground">Legal</h3>
-            <ul className="space-y-2">
-              {['Privacy', 'Terms', 'Security', 'Status'].map((link) => (
-                <li key={link}>
-                  <a
-                    href="#"
-                    className="text-sm text-foreground/95 transition-colors hover:text-primary"
-                  >
-                    {link}
-                  </a>
-                </li>
-              ))}
+            <h3 className="mb-4 font-semibold text-foreground">Technology Stack</h3>
+            <ul className="space-y-2 text-sm text-foreground/95">
+              <li>SQLite Query Planner</li>
+              <li>FastAPI & Python</li>
+              <li>scikit-learn (ML Engine)</li>
+              <li>Next.js & Tailwind CSS</li>
             </ul>
           </motion.div>
         </motion.div>
@@ -144,31 +111,23 @@ export function Footer() {
         >
           {/* Copyright */}
           <p className="text-sm text-foreground/95">
-            &copy; 2024 Arbiter. All rights reserved.
+            &copy; {new Date().getFullYear()} Arbiter. All rights reserved.
           </p>
 
           {/* Social Links */}
           <div className="flex items-center gap-4">
             {[
-              { icon: Github, label: 'GitHub' },
-              { label: 'Twitter', external: true },
-              { icon: Mail, label: 'Email' },
+              { icon: Github, label: 'GitHub', href: 'https://github.com/jhanvi857/Arbiter' },
+              { icon: Mail, label: 'Email', href: 'mailto:jhanvip8507@gmail.com' },
             ].map((link, i) => (
               <motion.a
                 key={i}
-                href="#"
+                href={link.href}
                 className="inline-flex items-center justify-center rounded-lg bg-card p-2 text-foreground/95 transition-all hover:bg-primary/10 hover:text-primary"
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
               >
-                {link.icon ? (
-                  <link.icon className="h-5 w-5" />
-                ) : (
-                  <>
-                    <span className="text-sm font-medium">{link.label}</span>
-                    <ExternalLink className="ml-1 h-3 w-3" />
-                  </>
-                )}
+                <link.icon className="h-5 w-5" />
               </motion.a>
             ))}
           </div>
