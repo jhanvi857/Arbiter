@@ -1,7 +1,19 @@
 import re
-import sqlparse
 from database import get_db_connection
 from typing import Optional
+
+def clean_sql_query(sql: str) -> str:
+    """Removes comments, trailing semicolon, and whitespace from SQL query."""
+    # Remove multi-line comments /* ... */
+    sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
+    # Remove single-line comments -- ...
+    sql = re.sub(r'--.*?\n', '\n', sql)
+    sql = re.sub(r'--.*?$', '', sql)
+    
+    sql = sql.strip()
+    if sql.endswith(';'):
+        sql = sql[:-1]
+    return sql.strip()
 
 # Cache for table sizes to avoid querying the database repeatedly
 # Keyed by {db_file_path: {table_name: count}}
@@ -95,6 +107,7 @@ def extract_features(query: str, conn=None) -> dict:
     Parses and extracts 14 advanced machine learning features from a SQL query.
     Requires a connection to SQLite database to run EXPLAIN QUERY PLAN and read table sizes.
     """
+    query = clean_sql_query(query)
     # Create connection if not provided
     close_conn = False
     if conn is None:
