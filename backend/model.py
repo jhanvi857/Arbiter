@@ -8,7 +8,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from xgboost import XGBRegressor
 from database import mongo_db
-from typing import Optional
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cost_model.pkl')
 CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'training_data.csv')
@@ -205,10 +204,10 @@ def predict_cost(features: dict) -> dict:
         model_data = joblib.load(MODEL_PATH)
         
     rf = model_data["model"]
-    X = np.array([[features[col] for col in FEATURE_COLS]])
+    X = pd.DataFrame([[features[col] for col in FEATURE_COLS]], columns=FEATURE_COLS)
     predicted_cost_ms = rf.predict(X)[0]
     
-    estimator_predictions = [tree.predict(X)[0] for tree in rf.estimators_]
+    estimator_predictions = [tree.predict(X.values)[0] for tree in rf.estimators_]
     pred_std = np.std(estimator_predictions)
     
     if pred_std < 2.0:
