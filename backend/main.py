@@ -317,15 +317,13 @@ def login(request_body: LoginRequest, response: Response):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
         
-    # Check password with unique salt or legacy static salt fallback
+    # Check password with unique salt
     salt_hex = user.get("password_salt")
-    if salt_hex:
-        salt = bytes.fromhex(salt_hex)
-        h = hash_password(request_body.password, salt)
-    else:
-        # Legacy fallback
-        static_salt = b"arbiter_static_salt_for_simplicity"
-        h = hashlib.pbkdf2_hmac("sha256", request_body.password.encode("utf-8"), static_salt, 100000).hex()
+    if not salt_hex:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+        
+    salt = bytes.fromhex(salt_hex)
+    h = hash_password(request_body.password, salt)
         
     if user["password_hash"] != h:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
