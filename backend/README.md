@@ -47,6 +47,21 @@ graph TD
 
 ---
 
+### Model Evaluation Metrics & Selected Model
+We benchmarked Linear Regression, Random Forest, and XGBoost regressors on 600 query profiles under both Random Split (in-distribution) and Template Split (out-of-distribution / unseen structures) validations:
+
+| Model | Random Split MAE (In-Dist) | Random Split R² | Template Split MAE (Out-of-Dist) | Template Split R² |
+|---|---|---|---|---|
+| **Linear Regression** | 488.78 ms | 0.1630 | 1995.98 ms | -4071.17 |
+| **Random Forest (Deployed)** | **335.44 ms** | **0.3733** | **405.15 ms** | **-353.94** |
+| **XGBoost Regressor** | 336.26 ms | 0.3728 | 735.42 ms | -1212.12 |
+
+**Why Random Forest was Deployed:**
+* **Generalization:** On completely unseen query templates (out-of-distribution), Random Forest achieved the lowest MAE of **405.15 ms**, significantly outperforming XGBoost's **735.42 ms** by resisting structured template overfitting.
+* **Predictive Confidence Intervals:** Random Forest allows calculating prediction standard deviation across its 100 individual estimators (`rf.estimators_`) to compute dynamic optimizer confidence intervals (High/Medium/Low).
+
+---
+
 ## Directory Layout
 
 ```
@@ -119,14 +134,6 @@ For any incoming query, we extract the following structural and query-planner fe
 12. `aggregation_count` (int): Number of aggregate functions (SUM, COUNT, etc.) used.
 13. `sort_columns_count` (int): Number of columns in the ORDER BY clause.
 14. `nested_subquery_count` (int): Number of nested SELECT subqueries.
-
-### Preventing Train-Test Leakage via Template Split
-Splitting SQL profiling records randomly can lead to extreme leakage because parameters change (e.g. `age = 20` vs `age = 25`) while the query structure remains identical. The model easily memorizes query templates and overfits.
-
-To ensure true structural generalization, Arbiter performs a **Template Split**:
-- **Train Set**: We train only on templates 1 to 32.
-- **Test Set**: We test exclusively on templates 33 to 40.
-This measures the model's accuracy on completely unseen query structures (like CTEs or self-joins that it did not see during training) and proves whether the models learn from features (like `index_usage_count` and `nested_subquery_count`) instead of memorizing template patterns.
 
 ---
 

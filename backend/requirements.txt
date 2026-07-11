@@ -4,7 +4,6 @@ scikit-learn
 numpy
 pandas
 joblib
-sqlparse
 python-multipart
 pymongo
 pyjwt

@@ -96,6 +96,7 @@ async function requestJson<T>(path: string, options: ApiOptions = {}): Promise<T
     headers,
     body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
     cache: 'no-store',
+    credentials: 'include', // Ensure cookies are sent in cross-origin local requests
   })
 
   if (!response.ok) {

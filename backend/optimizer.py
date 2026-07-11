@@ -5,11 +5,17 @@ from feature_extractor import extract_features
 from model import predict_cost
 
 def clean_sql_query(sql: str) -> str:
-    """Removes trailing semicolon and whitespace from SQL query."""
+    """Removes comments, trailing semicolon, and whitespace from SQL query."""
+    # Remove multi-line comments /* ... */
+    sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
+    # Remove single-line comments -- ...
+    sql = re.sub(r'--.*?\n', '\n', sql)
+    sql = re.sub(r'--.*?$', '', sql)
+    
     sql = sql.strip()
     if sql.endswith(';'):
         sql = sql[:-1]
-    return sql
+    return sql.strip()
 
 def check_aggregate_and_groupby(sql: str) -> bool:
     """
@@ -142,7 +148,7 @@ def optimize_query(original_sql: str, user_id: str = None) -> dict:
     - Executes the recommended plan and logs actual performance.
     """
     clean_sql = clean_sql_query(original_sql)
-    conn = get_db_connection()
+    conn = get_db_connection(user_id)
     
     # Set transaction isolation mode to autocommit to manage explicit BEGIN/ROLLBACK
     conn.isolation_level = None
@@ -180,7 +186,14 @@ def optimize_query(original_sql: str, user_id: str = None) -> dict:
             if cols == '*':
                 rewrite_cols = f"{t1}.*"
             else:
-                rewrite_cols = ", ".join([f"{t1}.{col.strip()}" for col in cols.split(",")])
+                rewrite_cols_list = []
+                for col in cols.split(","):
+                    col_strip = col.strip()
+                    if "." in col_strip:
+                        rewrite_cols_list.append(col_strip)
+                    else:
+                        rewrite_cols_list.append(f"{t1}.{col_strip}")
+                rewrite_cols = ", ".join(rewrite_cols_list)
                 
             plan_b_sql = f"SELECT DISTINCT {rewrite_cols} FROM {t1} JOIN {t2} ON {t1}.{c1} = {t2}.{c2}"
             plan_b_suggested = True

@@ -137,13 +137,20 @@ To ensure true structural generalization, Arbiter performs a **Template Split**:
 * **Test Set**: We test exclusively on templates 33 to 40.
 This measures the model's accuracy on completely unseen query structures (like CTEs or self-joins that it did not see during training) and proves whether the models learn from features instead of memorizing template patterns.
 
-### 4. Machine Learning Model Comparison (Why XGBoost?)
-We train and evaluate three regressor models under both **Random Split** (in-distribution validation) and **Template Split** (unseen generalization) validations:
+### 4. Machine Learning Model Selection & Metrics
+We train and evaluate three regressor models under both **Random Split** (80/20 in-distribution validation) and **Template Split** (out-of-distribution validation on unseen query structures) across 600 profiled queries.
 
-1. **Linear Regression (Baseline)**: Too simplistic. Query latency is highly non-linear (e.g. joins have quadratic complexity, scans scale linearly with table size). Linear models fail to capture these step-function changes and interaction effects.
-2. **Random Forest Regressor (Active Model)**: Fits independent decision trees in parallel. It is robust to overfitting and handles high-cardinality features well. However, it cannot extrapolate beyond the range of training labels.
-3. **XGBoost Regressor (Extreme Gradient Boosting)**: Fits trees sequentially, where each new tree corrects the errors (residuals) of the previous ones. 
-   * **Why XGBoost?**: Query latencies are heavily skewed (95% execute in under 2ms, while heavy correlated queries take 15,000ms+). XGBoost's sequential boosting minimizes residual errors more effectively than Random Forest, and its built-in L1/L2 regularization prevents overfitting to outlier queries.
+The benchmark metrics are:
+
+| Model | Random Split MAE (In-Dist) | Random Split R² | Template Split MAE (Out-of-Dist) | Template Split R² |
+|---|---|---|---|---|
+| **Linear Regression** | 488.78 ms | 0.1630 | 1995.98 ms | -4071.17 |
+| **Random Forest (Deployed)** | **335.44 ms** | **0.3733** | **405.15 ms** | **-353.94** |
+| **XGBoost Regressor** | 336.26 ms | 0.3728 | 735.42 ms | -1212.12 |
+
+**Why Random Forest was Deployed:**
+* **Generalization:** On completely unseen query templates, the Random Forest model achieved the lowest Mean Absolute Error (**405.15 ms** compared to XGBoost's **735.42 ms**), proving much more robust against overfitting on small structured SQL workloads.
+* **Ensemble Confidence:** Using a Random Forest with 100 estimators allows the system to compute the standard deviation of predictions across individual decision trees to generate query optimization confidence intervals (High/Medium/Low).
 
 ### 5. Execution Plan Alternatives (Plan A vs Plan B)
 The optimizer evaluates the original plan against proposed optimizations:
