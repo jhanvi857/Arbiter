@@ -1,6 +1,5 @@
 import os
 import time
-import json
 import re
 import sqlite3
 import shutil
@@ -34,7 +33,7 @@ def load_dotenv():
 # Load environment variables early so import modules like database can access them
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Header, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from bson import ObjectId
@@ -77,7 +76,7 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "Arbiter")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", None)
-SMTP_FROM = os.getenv("SMTP_FROM", "noreply@arbiter.com")
+SMTP_FROM = os.getenv("SMTP_FROM", "noreply@arbiter.com").strip().rstrip("/")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 
@@ -201,9 +200,9 @@ def utc_now() -> datetime.datetime:
     """Generates a timezone-naive UTC datetime to replace deprecated utcnow()."""
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
-def hash_password(password: str) -> str:
-    """Hashes a password securely using PBKDF2 with a static salt for simplicity."""
-    salt = b"arbiter_static_salt_for_simplicity"
+def hash_password(password: str, salt: bytes = None) -> str:
+    if salt is None:
+        salt = os.urandom(16)
     pwd_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000)
     return pwd_hash.hex()
 
@@ -218,12 +217,19 @@ def create_jwt_token(user_id: str, email: str) -> str:
 
 def get_user_id_from_request(request: Request) -> Optional[str]:
     """
-    Extracts and decodes the JWT bearer token from the Authorization header if present.
+    Extracts and decodes the JWT bearer token from the Authorization header or token cookie if present.
     """
+    token = None
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    else:
+        # SEC-06: Fallback to token stored in HTTP-only cookie
+        token = request.cookies.get("token")
+        
+    if not token:
         return None
-    token = auth_header.split(" ")[1]
+        
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return payload.get("user_id")
@@ -250,6 +256,12 @@ class ResendVerificationRequest(BaseModel):
 @app.on_event("startup")
 def on_startup():
     init_db()
+    # SEC-03: Security warnings for default keys in production environments
+    if JWT_SECRET == "ArbiterSecret":
+        print("\n" + "!" * 80)
+        print("SECURITY WARNING: Using default JWT_SECRET 'ArbiterSecret'.")
+        print("Please change JWT_SECRET in your production .env file to prevent session tampering.")
+        print("!" * 80 + "\n")
 
 @app.get("/")
 def root():
@@ -272,10 +284,12 @@ def signup(request_body: SignupRequest, background_tasks: BackgroundTasks):
         verification_token = uuid.uuid4().hex
         expiry = utc_now() + datetime.timedelta(hours=24)
         
+        salt = os.urandom(16)
         user_doc = {
             "name": request_body.name.strip(),
             "email": email,
-            "password_hash": hash_password(request_body.password),
+            "password_hash": hash_password(request_body.password, salt),
+            "password_salt": salt.hex(),
             "created_at": utc_now(),
             "is_verified": False,
             "verification_token": verification_token,
@@ -297,14 +311,22 @@ def signup(request_body: SignupRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=f"Failed to sign up: {str(e)}")
 
 @app.post("/auth/login")
-def login(request_body: LoginRequest):
+def login(request_body: LoginRequest, response: Response):
     email = request_body.email.strip().lower()
     user = database.mongo_db["users"].find_one({"email": email})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
         
-    # Check password
-    h = hash_password(request_body.password)
+    # Check password with unique salt or legacy static salt fallback
+    salt_hex = user.get("password_salt")
+    if salt_hex:
+        salt = bytes.fromhex(salt_hex)
+        h = hash_password(request_body.password, salt)
+    else:
+        # Legacy fallback
+        static_salt = b"arbiter_static_salt_for_simplicity"
+        h = hashlib.pbkdf2_hmac("sha256", request_body.password.encode("utf-8"), static_salt, 100000).hex()
+        
     if user["password_hash"] != h:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
         
@@ -317,6 +339,17 @@ def login(request_body: LoginRequest):
         
     user_id = str(user["_id"])
     token = create_jwt_token(user_id, email)
+    
+    # SEC-06: Set HTTP-only secure cookie fallback
+    response.set_cookie(
+        key="token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,  # False for local HTTP development, True for production HTTPS
+        max_age=24 * 3600  # 24 hours
+    )
+    
     return {"token": token, "email": email, "name": user.get("name", "")}
 
 @app.get("/auth/verify")
@@ -406,13 +439,25 @@ def execute_query(request_body: QueryRequest, request: Request):
     """
     Executes a raw SQL statement on the user's specific database workspace (or the demo DB if free),
     measures execution latency, and returns columns, rows, and execution statistics.
+    For unauthenticated users, enforces read-only query patterns and connection.
     """
     user_id = get_user_id_from_request(request)
     sql = request_body.sql.strip()
     if not sql:
         raise HTTPException(status_code=400, detail="SQL query cannot be empty")
         
-    conn = get_db_connection(user_id)
+    read_only = (user_id is None)
+    if read_only:
+        # Enforce read-only prefix restriction for guests
+        cleaned_sql = re.sub(r'^\s*(?:--.*?\n|/\*.*?\*/)\s*', '', sql, flags=re.DOTALL).strip()
+        upper_cleaned = cleaned_sql.upper()
+        if not any(upper_cleaned.startswith(prefix) for prefix in ["SELECT", "EXPLAIN", "WITH"]):
+            raise HTTPException(
+                status_code=403,
+                detail="Guest execution is restricted to read-only queries (SELECT, EXPLAIN, WITH)."
+            )
+            
+    conn = get_db_connection(user_id, read_only=read_only)
     try:
         cursor = conn.cursor()
         t_start = time.perf_counter()
@@ -427,7 +472,8 @@ def execute_query(request_body: QueryRequest, request: Request):
         else:
             columns = []
             rows = []
-            conn.commit()  # commit writes if DML
+            if not read_only:
+                conn.commit()  # commit writes if DML
             
         t_end = time.perf_counter()
         latency_ms = (t_end - t_start) * 1000.0
@@ -491,12 +537,26 @@ def get_model_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching model stats: {str(e)}")
 
-@app.post("/model/retrain")
-def retrain_model(request: Request):
+# Global lock to prevent concurrent model retraining tasks
+_is_retraining = False
+
+def run_retrain_background(user_id: Optional[str]):
+    global _is_retraining
+    try:
+        retrain_on_logs(user_id)
+    except Exception as e:
+        print(f"Background model retraining failed: {e}")
+    finally:
+        _is_retraining = False
+
+@app.post("/model/retrain", status_code=202)
+def retrain_model(request: Request, background_tasks: BackgroundTasks):
     """
     Triggers model retraining on combined baseline data and database logs.
     Includes a guard to ensure that at least 100 queries have been logged for this user.
+    Offloaded to a background task to prevent blocking the web worker threads.
     """
+    global _is_retraining
     user_id = get_user_id_from_request(request)
     
     # Check logs count for user
@@ -513,20 +573,20 @@ def retrain_model(request: Request):
             detail=f"Overfitting guard active: need at least 100 logged queries to retrain (current logs: {total_logs})."
         )
         
-    try:
-        print("Starting model retraining...")
-        model_metadata = retrain_on_logs(user_id)
-        return {
-            "status": "success",
-            "message": "Model retrained successfully on accumulated query logs.",
-            "metrics": {
-                "mae_ms": model_metadata["mae_ms"],
-                "r2_score": model_metadata["r2_score"],
-                "training_samples": model_metadata["training_samples"]
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retraining model: {str(e)}")
+    if _is_retraining:
+        raise HTTPException(
+            status_code=409,
+            detail="Model is already retraining. Please try again later."
+        )
+        
+    _is_retraining = True
+    print("Enqueued model retraining task in the background...")
+    background_tasks.add_task(run_retrain_background, user_id)
+    
+    return {
+        "status": "accepted",
+        "message": "Model retraining enqueued in the background. Check /model/stats for updated metrics."
+    }
 
 # Database Management Endpoints
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -617,11 +677,29 @@ async def upload_database(request: Request, file: UploadFile = File(...)):
     os.makedirs(user_upload_dir, exist_ok=True)
     target_path = os.path.join(user_upload_dir, "user_database.db")
     
-    # Save the file
+    # Save the file with a size limit (50MB) to prevent disk exhaustion
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+    total_bytes = 0
     try:
         with open(target_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="File size exceeds the maximum limit of 50MB."
+                    )
+                f.write(chunk)
+    except HTTPException:
+        if os.path.exists(target_path):
+            os.remove(target_path)
+        raise
     except Exception as e:
+        if os.path.exists(target_path):
+            os.remove(target_path)
         raise HTTPException(status_code=500, detail=f"Failed to write uploaded file: {str(e)}")
         
     # Verify the SQLite file is valid

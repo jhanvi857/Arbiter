@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import pymongo
-from bson import ObjectId
 import datetime
 from typing import Optional
 
@@ -29,13 +28,23 @@ def get_user_db_path(user_id: Optional[str] = None) -> str:
         print("Error fetching user database path from MongoDB:", e)
     return DB_PATH
 
-def get_db_connection(user_id: Optional[str] = None):
+def get_db_connection(user_id: Optional[str] = None, read_only: bool = False):
     """
     Creates and returns a connection to the SQLite database associated with the user.
     If no user_id is provided, routes to the default demo database.
+    Can be opened in read-only mode for guest execution safety.
     """
     path = get_user_db_path(user_id)
-    conn = sqlite3.connect(path)
+    if read_only:
+        # Convert path to standard absolute file URI with mode=ro
+        normalized_path = path.replace("\\", "/")
+        if not normalized_path.startswith('/'):
+            db_uri = f"file:///{normalized_path}?mode=ro"
+        else:
+            db_uri = f"file://{normalized_path}?mode=ro"
+        conn = sqlite3.connect(db_uri, uri=True)
+    else:
+        conn = sqlite3.connect(path)
     # Use Row factory to access columns by name
     conn.row_factory = sqlite3.Row
     return conn
@@ -51,7 +60,7 @@ def log_query_execution(user_id: Optional[str], query: str, features: dict, pred
             "features": features,
             "predicted_cost": predicted_cost,
             "actual_cost": actual_cost,
-            "timestamp": datetime.datetime.utcnow()
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         }
         mongo_db["query_logs"].insert_one(log_entry)
     except Exception as e:
